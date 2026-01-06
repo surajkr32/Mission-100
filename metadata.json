@@ -1,0 +1,7 @@
+{
+  "name": "Mission 100% - CBSE Class 10 Prep",
+  "description": "An AI-powered exam preparation platform for Class 10 CBSE students featuring 15 sets of question papers across all subjects with instant AI evaluation and photo upload support.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
