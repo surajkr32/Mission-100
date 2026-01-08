@@ -8,54 +8,49 @@ export async function evaluateAnswers(
   questions: Question[],
   answers: StudentAnswer[]
 ): Promise<TotalEvaluation> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Defensive check for various ways environment variables are injected
+  const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : (window as any)._env_?.API_KEY;
+
+  if (!apiKey || apiKey === "undefined" || apiKey.length < 10) {
+    throw new Error("Missing or Invalid API Key. Please add 'API_KEY' to your Netlify/Vercel Environment Variables. Note: You provided a Resend key, but this app requires a Google Gemini key (starting with AIza).");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-pro-preview';
 
-  // Constructing multimodal parts
   const parts: any[] = [
     {
-      text: `You are an expert CBSE Class 10 examiner. Evaluate the following student answers for the ${subject} exam (Set ${setNumber}).
+      text: `You are an official CBSE Class 10 Board Examiner for ${subject}. 
+      Evaluate the following student answers for Practice Set #${setNumber}.
       
-      For each question, the student has provided either a text response, an image of their handwritten answer, or both.
-      Analyze the content thoroughly. If an image is provided, perform OCR and semantic analysis on the handwriting.
-      
-      For each question, provide:
-      1. A score based on the marks allocated.
-      2. Specific feedback on what was good and what was missing based on CBSE marking schemes.
-      3. A summary of the ideal answer.
-      
-      In addition to detailed results, provide a "Concise Summary" that:
-      - Lists the top 3 strengths in the student's performance.
-      - Lists the top 3 areas needing immediate improvement.
-      - Provides a one-sentence "Action Plan" for the next mock test.`
+      CRITICAL INSTRUCTIONS:
+      1. Use high-precision OCR for images.
+      2. Grade strictly by CBSE marking schemes.
+      3. Provide 'Expert Ideal Answer' for every question.
+      4. Format 'Concise Summary' with markdown headers for Strengths, Improvements, and Action Plan.`
     }
   ];
 
   questions.forEach((q) => {
     const studentAns = answers.find(a => a.questionId === q.id);
     parts.push({
-      text: `\n--- QUESTION DATA ---\nID: ${q.id}\nSection: ${q.section}\nQuestion: ${q.text}\nMax Marks: ${q.marks}\n`
+      text: `\n[ID: ${q.id}] Section: ${q.section} | Question: ${q.text} | Marks: ${q.marks}\n`
     });
 
     if (studentAns?.answerText) {
-      parts.push({ text: `Student's Typed Answer: ${studentAns.answerText}\n` });
+      parts.push({ text: `Student's Text: "${studentAns.answerText}"\n` });
     }
 
     if (studentAns?.answerImage) {
-      // Expecting standard base64 data URL: data:image/png;base64,xxxx
       const base64Data = studentAns.answerImage.split(',')[1];
       const mimeType = studentAns.answerImage.split(';')[0].split(':')[1] || 'image/jpeg';
       parts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType
-        }
+        inlineData: { data: base64Data, mimeType }
       });
-      parts.push({ text: `[Handwritten answer image provided for the question above]\n` });
     }
 
     if (!studentAns?.answerText && !studentAns?.answerImage) {
-      parts.push({ text: `Student's Answer: No answer provided.\n` });
+      parts.push({ text: `Result: Not Attempted.\n` });
     }
   });
 
@@ -83,10 +78,7 @@ export async function evaluateAnswers(
             },
             overallFeedback: { type: Type.STRING },
             totalScore: { type: Type.NUMBER },
-            conciseSummary: { 
-              type: Type.STRING,
-              description: "A bulleted, concise summary of strengths, weaknesses, and a one-sentence action plan."
-            }
+            conciseSummary: { type: Type.STRING }
           },
           required: ["detailedResults", "overallFeedback", "totalScore", "conciseSummary"]
         }
@@ -105,8 +97,8 @@ export async function evaluateAnswers(
       overallFeedback: result.overallFeedback,
       conciseSummary: result.conciseSummary
     };
-  } catch (error) {
-    console.error("Evaluation failed:", error);
-    throw new Error("Failed to evaluate your answers. Please ensure images are clear and try again.");
+  } catch (error: any) {
+    console.error("Evaluation error:", error);
+    throw new Error(error.message || "Failed to connect to AI Service.");
   }
 }
