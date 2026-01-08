@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, StudentAnswer, TotalEvaluation, Subject } from "../types";
 
@@ -8,11 +7,11 @@ export async function evaluateAnswers(
   questions: Question[],
   answers: StudentAnswer[]
 ): Promise<TotalEvaluation> {
-  // Defensive check for various ways environment variables are injected
-  const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : (window as any)._env_?.API_KEY;
+  // Use process.env.API_KEY directly as required by guidelines
+  const apiKey = process.env.API_KEY;
 
-  if (!apiKey || apiKey === "undefined" || apiKey.length < 10) {
-    throw new Error("Missing or Invalid API Key. Please add 'API_KEY' to your Netlify/Vercel Environment Variables. Note: You provided a Resend key, but this app requires a Google Gemini key (starting with AIza).");
+  if (!apiKey || apiKey === "undefined") {
+    throw new Error("API_KEY is not set in the environment. Please add it to your Netlify environment variables.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -24,33 +23,37 @@ export async function evaluateAnswers(
       Evaluate the following student answers for Practice Set #${setNumber}.
       
       CRITICAL INSTRUCTIONS:
-      1. Use high-precision OCR for images.
-      2. Grade strictly by CBSE marking schemes.
-      3. Provide 'Expert Ideal Answer' for every question.
-      4. Format 'Concise Summary' with markdown headers for Strengths, Improvements, and Action Plan.`
+      1. If the student has uploaded an image, use high-precision OCR to read the handwriting.
+      2. Grade strictly according to CBSE marking schemes (step-marking for calculations).
+      3. Provide a 'Correct Answer Summary' (Expert Ideal Answer) for every question to help the student learn.
+      4. Ensure the JSON response strictly follows the schema.`
     }
   ];
 
   questions.forEach((q) => {
     const studentAns = answers.find(a => a.questionId === q.id);
     parts.push({
-      text: `\n[ID: ${q.id}] Section: ${q.section} | Question: ${q.text} | Marks: ${q.marks}\n`
+      text: `\n[QUESTION ID: ${q.id}]\nSection: ${q.section}\nQuestion: ${q.text}\nMax Marks: ${q.marks}\n`
     });
 
     if (studentAns?.answerText) {
-      parts.push({ text: `Student's Text: "${studentAns.answerText}"\n` });
+      parts.push({ text: `Student's Text Answer: "${studentAns.answerText}"\n` });
     }
 
     if (studentAns?.answerImage) {
       const base64Data = studentAns.answerImage.split(',')[1];
       const mimeType = studentAns.answerImage.split(';')[0].split(':')[1] || 'image/jpeg';
       parts.push({
-        inlineData: { data: base64Data, mimeType }
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
       });
+      parts.push({ text: `[Image content attached above for question ${q.id}]\n` });
     }
 
     if (!studentAns?.answerText && !studentAns?.answerImage) {
-      parts.push({ text: `Result: Not Attempted.\n` });
+      parts.push({ text: `Result: Question was not attempted.\n` });
     }
   });
 
@@ -99,6 +102,6 @@ export async function evaluateAnswers(
     };
   } catch (error: any) {
     console.error("Evaluation error:", error);
-    throw new Error(error.message || "Failed to connect to AI Service.");
+    throw new Error("AI Evaluation failed: " + error.message);
   }
 }
